@@ -1,6 +1,6 @@
 # Pricing and Hedging a Barrier Option
 
-[![CI](https://github.com/MilanKalajdzic/Monte-Carlo-Pricing-of-a-Barrier-Option/actions/workflows/ci.yml/badge.svg)](https://github.com/MilanKalajdzic/Monte-Carlo-Pricing-of-a-Barrier-Option/actions/workflows/ci.yml)
+[![CI](https://github.com/MilanKalajdzic/barrier-option-pricing/actions/workflows/ci.yml/badge.svg)](https://github.com/MilanKalajdzic/barrier-option-pricing/actions/workflows/ci.yml)
 
 This project prices an **up-and-out call** under Black-Scholes dynamics five ways:
 - the closed form
@@ -78,8 +78,8 @@ down makes a daily simulation approximate the continuous price.
 ## Run it
 
 ```bash
-git clone https://github.com/MilanKalajdzic/Monte-Carlo-Pricing-of-a-Barrier-Option
-cd Monte-Carlo-Pricing-of-a-Barrier-Option
+git clone https://github.com/MilanKalajdzic/barrier-option-pricing
+cd barrier-option-pricing
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
