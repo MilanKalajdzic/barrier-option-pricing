@@ -19,3 +19,7 @@ jobs:
       - run: ruff format --check .
       - run: pytest
       - run: pytest --nbmake notebooks/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test "web/tests/*.test.js"
