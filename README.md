@@ -13,8 +13,9 @@ It then delta-hedges the option to see what its Greeks mean in practice. Two fin
 - **The price depends on how often the barrier is checked.** A contract checked at each
   daily close is worth about 7% more than the textbook continuous-barrier price. That gap is
   not simulation error.
-- **The option is hard to hedge near the barrier.** Delta-hedging breaks down there, and
-  almost all of the large hedging losses come from paths that got close to it.
+- **The option is hard to hedge near the barrier.** Delta-hedging breaks down there: almost
+  all of the extreme hedging outcomes, gains and losses alike, come from paths that got
+  close to it.
 
 The pricing code is a small tested package (`src/barrier_pricing`). The notebook
 [`notebooks/barrier_option_pricing.ipynb`](notebooks/barrier_option_pricing.ipynb) tells the
@@ -59,9 +60,11 @@ knockout risk than intrinsic value. Gamma changes sign twice, at about 86 and ab
 ![Hedging P&L](figures/hedging_pnl.png)
 
 **Hedging.** With daily rebalancing, the vanilla call's hedging error is 4% of the premium.
-The barrier option's is 43%, with a heavy left tail, and it shrinks much more slowly as
-rebalancing gets more frequent. 98% of the worst 1% of outcomes come from paths that came
-within 5% of the barrier.
+The barrier option's is 43%, with fat tails on both sides, and it shrinks much more slowly as
+rebalancing gets more frequent. 98% of the worst 1% of outcomes, and 99% of the best 1%, come
+from paths that came within 5% of the barrier. The cause is a cliff: near expiry the option is
+worth several premiums just below H and nothing at H, and a stock hedge cannot replicate a
+cliff.
 
 ## Which price is right?
 
