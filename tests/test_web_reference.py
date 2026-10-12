@@ -15,6 +15,12 @@ FUNCTIONS = {
     "bgkBarrier": bgk_barrier,
 }
 CASES = json.loads(REFERENCE.read_text(encoding="utf-8"))["cases"]
+# reference.json is generated on one machine and checked on others (CI runs Linux), whose maths
+# libraries can differ by an ulp. Gamma divides price differences by eps**2 = 1e-4, so an ulp
+# in a price moves it by ~1e-11. These tolerances absorb that; a real formula change moves
+# values by far more.
+TOLERANCE = {"uocGamma": {"abs": 1e-9}}
+DEFAULT_TOLERANCE = {"rel": 1e-9, "abs": 1e-12}
 
 
 def test_reference_covers_every_function():
@@ -24,4 +30,5 @@ def test_reference_covers_every_function():
 @pytest.mark.parametrize("case", CASES, ids=lambda c: f"{c['fn']}{c['args']}")
 def test_reference_matches_package(case):
     got = float(FUNCTIONS[case["fn"]](*case["args"]))
-    assert got == pytest.approx(case["expected"], abs=1e-12)
+    tolerance = TOLERANCE.get(case["fn"], DEFAULT_TOLERANCE)
+    assert got == pytest.approx(case["expected"], **tolerance)

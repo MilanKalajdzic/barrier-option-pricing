@@ -1,8 +1,8 @@
 // Page wiring: reads the controls, runs the pricing modules and draws the charts.
 // The only module that touches the DOM; all maths lives in pricing.js, mc.js and hedging.js.
 
-import { bgkBarrier, bsCall, bsCallDelta, uocCall, uocDelta, uocGamma } from "./pricing.js";
-import { hedgingStudy, pricerSimulations } from "./studies.js";
+import { bsCallDelta, uocDelta, uocGamma } from "./pricing.js";
+import { closedFormPrices, hedgingStudy, pricerSimulations } from "./studies.js";
 
 const $ = (id) => document.getElementById(id);
 const hasCharts = typeof window.Chart !== "undefined";
@@ -152,37 +152,27 @@ function showContract(c) {
   $("T-out").textContent = `${c.T.toFixed(1)} y`;
 }
 
-function deadReason(c) {
-  if (c.S0 >= c.H) return "the spot is at or above the barrier";
-  if (c.K >= c.H) return "the strike is at or above the barrier, so it is knocked out before it can pay";
-  return null;
-}
-
 // ---------- 1. pricer ----------
 
 const mcText = (res) => `${fmt(res.price)} ± ${fmt(1.96 * res.stdError, 3)}`;
 
 function updatePricer(c) {
   const mode = MONITORING[$("monitoring").value];
-  const steps = Math.max(1, Math.round(c.T * (mode.perYear ?? 252)));
-  const dt = c.T / steps;
-  const shifted = bgkBarrier(c.H, c.sigma, dt, "discrete");
+  const p = closedFormPrices(c, mode.perYear);
+  const steps = p.steps;
 
-  const cont = uocCall(c.S0, c.K, c.H, c.r, c.sigma, c.T);
-  const monitored = mode.perYear ? uocCall(c.S0, c.K, shifted, c.r, c.sigma, c.T) : cont;
-  const vanilla = bsCall(c.S0, c.K, c.r, c.sigma, c.T);
-
-  $("price-cont").textContent = fmt(cont);
-  $("price-monitored").textContent = fmt(monitored);
-  $("monitoring-label").textContent = mode.label;
+  $("price-cont").textContent = fmt(p.cont);
+  $("price-monitored").textContent = fmt(p.monitored);
+  $("monitored-label").textContent = mode.perYear
+    ? `Closed form + BGK shift, ${mode.label} checks (approx.)`
+    : "Closed form, continuous checks";
   $("monitoring-note").textContent = mode.perYear
-    ? `barrier shifted to ${fmt(shifted, 2)} · ${steps} check${steps === 1 ? "" : "s"}`
+    ? `barrier shifted to ${fmt(p.shifted, 2)} · ${steps} check${steps === 1 ? "" : "s"}`
     : "no shift needed";
-  $("price-vanilla").textContent = fmt(vanilla);
-  $("discount").textContent = vanilla > 0 ? pct(1 - monitored / vanilla) : "–";
+  $("price-vanilla").textContent = fmt(p.vanilla);
+  $("discount").textContent = p.discount === null ? "–" : pct(p.discount);
 
-  const reason = deadReason(c);
-  setStatus("pricer-status", reason && `The option is worthless: ${reason}.`);
+  setStatus("pricer-status", p.deadReason && `The option is worthless: ${p.deadReason}.`);
 
   $("mc-discrete-card").hidden = !mode.perYear;
   runPricer({ contract: c, steps, nPaths: MC_PATHS, seed: 1, discrete: Boolean(mode.perYear) });
@@ -342,7 +332,12 @@ function renderHedging() {
   const days = REBALANCE_DAYS[idx];
   $("rebalance-out").textContent = days === 1 ? "day" : `${days} days`;
   if (!hedge) return;
-  setStatus("hedge-status", hedge.dead && "Nothing to hedge: the barrier option is worthless for these inputs.");
+  const why = {
+    worthless: "Nothing to hedge: the barrier option is worthless for these inputs.",
+    negligible:
+      "Nothing meaningful to hedge: the barrier option's premium is under 0.01% of the spot, so P&L measured against it is just noise.",
+  };
+  setStatus("hedge-status", hedge.dead && why[hedge.reason]);
   $("hedge-body").hidden = hedge.dead;
   if (hedge.dead) return;
 

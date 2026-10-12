@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hedgingStudy, pricerSimulations } from "../js/studies.js";
+import { closedFormPrices, hedgingStudy, pricerSimulations } from "../js/studies.js";
 import { uocCall } from "../js/pricing.js";
 
 const contract = { S0: 100, K: 100, H: 130, r: 0.05, sigma: 0.2, T: 1 };
@@ -38,4 +38,33 @@ test("pricerSimulations skips the discrete run for a continuous barrier", () => 
   assert.ok(Math.abs(sims.bridge.price - closed) < 4 * sims.bridge.stdError);
   const both = pricerSimulations({ contract, steps: 12, nPaths: 2000, seed: 1, discrete: true });
   assert.ok(both.discrete.price > both.bridge.price);
+});
+
+test("closedFormPrices zeroes every price of a dead contract, whatever the monitoring", () => {
+  for (const dead of [{ S0: 130 }, { S0: 140 }, { K: 130 }]) {
+    for (const perYear of [null, 252, 12]) {
+      const p = closedFormPrices({ ...contract, ...dead }, perYear);
+      assert.ok(p.deadReason, JSON.stringify(dead));
+      assert.equal(p.cont, 0);
+      assert.equal(p.monitored, 0);
+      assert.equal(p.discount, 1);
+    }
+  }
+});
+
+test("closedFormPrices matches the closed form for a live contract", () => {
+  const daily = closedFormPrices(contract, 252);
+  assert.equal(daily.deadReason, null);
+  assert.equal(daily.steps, 252);
+  assert.ok(Math.abs(daily.cont - 3.3329) < 1e-4 && Math.abs(daily.monitored - 3.566) < 1e-3);
+  assert.equal(closedFormPrices(contract, null).monitored, daily.cont);
+  assert.equal(closedFormPrices({ ...contract, T: 0.1 }, 12).steps, 1);
+});
+
+test("hedgingStudy declines to hedge a premium too small to be meaningful", () => {
+  const study = hedgingStudy({ contract: { ...contract, K: 129 }, rebalanceDays, nPaths: 100, seed: 1 });
+  assert.equal(study.dead, true);
+  assert.equal(study.reason, "negligible");
+  const worthless = hedgingStudy({ contract: { ...contract, S0: 135 }, rebalanceDays, nPaths: 100, seed: 1 });
+  assert.equal(worthless.reason, "worthless");
 });

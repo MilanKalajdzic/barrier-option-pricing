@@ -85,8 +85,10 @@
         <p class="hint">
           <strong>What to look for:</strong> switch between continuous and daily checks. A path
           can cross the barrier and come back between two checks, so the less often the barrier
-          is checked, the more the option is worth. The Broadie–Glasserman–Kou shift reproduces
-          the simulated price from the closed form.
+          is checked, the more the option is worth. For daily checks, shifting the barrier
+          (Broadie–Glasserman–Kou) lets the closed form match the simulated price closely. It is
+          an asymptotic correction, though: with monthly checks, or a spot close to the barrier,
+          compare it with the simulated card and watch it drift.
         </p>
         <p class="status" id="pricer-status" hidden></p>
         <div class="cards">
@@ -95,7 +97,7 @@
             <span class="card-value" id="price-cont"></span>
           </div>
           <div class="card card-accent">
-            <span class="card-label">Closed form, <span id="monitoring-label">daily</span> checks</span>
+            <span class="card-label" id="monitored-label">Closed form + BGK shift, daily checks (approx.)</span>
             <span class="card-value" id="price-monitored"></span>
             <span class="card-note" id="monitoring-note"></span>
           </div>
@@ -154,8 +156,9 @@
         <p class="hint">
           <strong>What to look for:</strong> sell each option at its model price and delta-hedge it
           with the stock. Rebalancing more often shrinks the vanilla call's hedging error like
-          1/√n, but helps the barrier option much less. Its P&amp;L has fat tails on both sides,
-          driven by paths that come close to the barrier. The barrier contract here is checked
+          1/√n. It helps the barrier option less, and the barrier hedge stays several times
+          noisier relative to its premium. Its P&amp;L has fat tails on both sides, driven by
+          paths that come close to the barrier. The barrier contract here is checked
           at each daily close. 2,000 simulated paths.
         </p>
         <p class="status" id="hedge-status" hidden></p>
