@@ -54,30 +54,43 @@ export function bsCallDelta(S, K, r, sigma, T) {
   return normCdf(d1);
 }
 
-// Up-and-out call with a continuously monitored barrier H (Haug 2007).
+// Up-and-out call with a continuously monitored barrier H (Haug 2007), as a function of spot
+// for fixed contract terms. Everything that does not depend on S is computed once, which
+// matters when the same contract is priced at thousands of spots (Greeks, hedging).
 // Worthless once the spot reaches H, and always worthless if K >= H.
-export function uocCall(S, K, H, r, sigma, T) {
-  if (T <= 0) return S < H ? Math.max(S - K, 0) : 0;
-  if (K >= H || S >= H) return 0;
+export function uocPricer(K, H, r, sigma, T) {
+  if (T <= 0) return (S) => (S < H ? Math.max(S - K, 0) : 0);
+  if (K >= H) return () => 0;
 
   const mu = (r - 0.5 * sigma ** 2) / sigma ** 2;
   const vol = sigma * Math.sqrt(T);
+  const shift = (1 + mu) * vol;
   const discK = K * Math.exp(-r * T);
+  const logK = Math.log(K);
+  const logH = Math.log(H);
 
-  const x1 = Math.log(S / K) / vol + (1 + mu) * vol;
-  const x2 = Math.log(S / H) / vol + (1 + mu) * vol;
-  const y1 = Math.log((H * H) / (S * K)) / vol + (1 + mu) * vol;
-  const y2 = Math.log(H / S) / vol + (1 + mu) * vol;
-  const up = (H / S) ** (2 * (mu + 1));
-  const down = (H / S) ** (2 * mu);
+  return (S) => {
+    if (S >= H) return 0;
+    const logS = Math.log(S);
+    const x1 = (logS - logK) / vol + shift;
+    const x2 = (logS - logH) / vol + shift;
+    const y1 = (2 * logH - logS - logK) / vol + shift;
+    const y2 = (logH - logS) / vol + shift;
+    const up = Math.exp(2 * (mu + 1) * (logH - logS)); // (H/S)^(2(mu+1))
+    const down = Math.exp(2 * mu * (logH - logS)); // (H/S)^(2mu)
 
-  const A = S * normCdf(x1) - discK * normCdf(x1 - vol);
-  const B = S * normCdf(x2) - discK * normCdf(x2 - vol);
-  const C = S * up * normCdf(-y1) - discK * down * normCdf(-y1 + vol);
-  const D = S * up * normCdf(-y2) - discK * down * normCdf(-y2 + vol);
+    const A = S * normCdf(x1) - discK * normCdf(x1 - vol);
+    const B = S * normCdf(x2) - discK * normCdf(x2 - vol);
+    const C = S * up * normCdf(-y1) - discK * down * normCdf(-y1 + vol);
+    const D = S * up * normCdf(-y2) - discK * down * normCdf(-y2 + vol);
 
-  // Clip: A - B + C - D cancels to ~1e-15 (either sign) as S approaches H.
-  return Math.max(A - B + C - D, 0);
+    // Clip: A - B + C - D cancels to ~1e-15 (either sign) as S approaches H.
+    return Math.max(A - B + C - D, 0);
+  };
+}
+
+export function uocCall(S, K, H, r, sigma, T) {
+  return uocPricer(K, H, r, sigma, T)(S);
 }
 
 // BGK continuity correction for an up barrier monitored every dt.
@@ -90,15 +103,18 @@ export function bgkBarrier(H, sigma, dt, target) {
   throw new Error(`target must be "continuous" or "discrete", got ${JSON.stringify(target)}`);
 }
 
-// dV/dS of the up-and-out call by central differences.
+// dV/dS of the up-and-out call by central differences, as a function of spot.
+export function uocDeltaFn(K, H, r, sigma, T, eps = 1e-2) {
+  const price = uocPricer(K, H, r, sigma, T);
+  return (S) => (price(S + eps) - price(S - eps)) / (2 * eps);
+}
+
 export function uocDelta(S, K, H, r, sigma, T, eps = 1e-2) {
-  return (uocCall(S + eps, K, H, r, sigma, T) - uocCall(S - eps, K, H, r, sigma, T)) / (2 * eps);
+  return uocDeltaFn(K, H, r, sigma, T, eps)(S);
 }
 
 // d2V/dS2 of the up-and-out call by central differences.
 export function uocGamma(S, K, H, r, sigma, T, eps = 1e-2) {
-  const up = uocCall(S + eps, K, H, r, sigma, T);
-  const mid = uocCall(S, K, H, r, sigma, T);
-  const down = uocCall(S - eps, K, H, r, sigma, T);
-  return (up - 2 * mid + down) / eps ** 2;
+  const price = uocPricer(K, H, r, sigma, T);
+  return (price(S + eps) - 2 * price(S) + price(S - eps)) / eps ** 2;
 }

@@ -40,6 +40,7 @@ export function priceBarrierMC({ S0, K, H, r, sigma, T, steps, nPaths, method = 
   const drift = (r - 0.5 * sigma ** 2) * dt;
   const vol = sigma * Math.sqrt(dt);
   const logH = Math.log(H);
+  const bridgeScale = -2 / (sigma ** 2 * dt);
 
   const x = new Float64Array(nPaths).fill(Math.log(S0));
   const survival = new Float64Array(nPaths).fill(S0 < H ? 1 : 0);
@@ -54,9 +55,14 @@ export function priceBarrierMC({ S0, K, H, r, sigma, T, steps, nPaths, method = 
       } else {
         const a = logH - x[p];
         const b = logH - xNew;
-        // a, b > 0 keeps the exponent negative, so exp() cannot overflow.
-        const pCross = a > 0 && b > 0 ? Math.exp((-2 * a * b) / (sigma ** 2 * dt)) : 1;
-        survival[p] *= 1 - pCross;
+        if (a > 0 && b > 0) {
+          // a, b > 0 keeps the exponent negative, so exp() cannot overflow. Below -40 the
+          // crossing probability is under half an ulp of 1, so 1 - p would round to 1 anyway.
+          const exponent = bridgeScale * a * b;
+          if (exponent > -40) survival[p] *= 1 - Math.exp(exponent);
+        } else {
+          survival[p] = 0;
+        }
       }
       x[p] = xNew;
     }

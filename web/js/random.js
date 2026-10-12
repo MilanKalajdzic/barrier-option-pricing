@@ -11,19 +11,28 @@ export function mulberry32(seed) {
   };
 }
 
-// Standard normal draws by the Box-Muller transform, using both outputs of each pair.
+// Standard normal draws by Marsaglia's polar method (Box-Muller without the cos/sin calls),
+// using both outputs of each accepted pair.
 export function normalGenerator(seed) {
   const uniform = mulberry32(seed);
-  let spare = null;
+  let spare = 0;
+  let hasSpare = false;
   return () => {
-    if (spare !== null) {
-      const z = spare;
-      spare = null;
-      return z;
+    if (hasSpare) {
+      hasSpare = false;
+      return spare;
     }
-    const radius = Math.sqrt(-2 * Math.log(1 - uniform())); // 1 - u lies in (0, 1]
-    const angle = 2 * Math.PI * uniform();
-    spare = radius * Math.sin(angle);
-    return radius * Math.cos(angle);
+    let u;
+    let v;
+    let s;
+    do {
+      u = 2 * uniform() - 1;
+      v = 2 * uniform() - 1;
+      s = u * u + v * v;
+    } while (s >= 1 || s === 0);
+    const m = Math.sqrt((-2 * Math.log(s)) / s);
+    spare = v * m;
+    hasSpare = true;
+    return u * m;
   };
 }

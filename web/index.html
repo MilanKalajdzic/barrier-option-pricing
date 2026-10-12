@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Barrier Option Pricing — Interactive Demo</title>
+    <meta
+      name="description"
+      content="Price, inspect and delta-hedge an up-and-out barrier call in the browser: closed form, Monte Carlo with a Brownian bridge, Greeks and hedging P&amp;L."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ff7f0e'/%3E%3Cpath d='M4 8h24' stroke='white' stroke-width='2' stroke-dasharray='3 3'/%3E%3Cpath d='M5 25l7-8 5 4 9-11' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <p class="eyebrow">Interactive demo</p>
+        <h1>Pricing and hedging an up-and-out barrier call</h1>
+        <p class="lede">
+          An up-and-out call pays like an ordinary call, unless the stock touches the barrier
+          before expiry, in which case it pays nothing. Change the contract below and watch the
+          project's three findings: how often the barrier is checked changes the price, the
+          Greeks explode near the barrier as expiry approaches, and delta hedging leaves fat
+          tails on both sides.
+        </p>
+        <p class="links">
+          <a href="https://github.com/MilanKalajdzic/barrier-option-pricing">Code on GitHub</a>
+          <span aria-hidden="true">·</span>
+          <a
+            href="https://github.com/MilanKalajdzic/barrier-option-pricing/blob/main/notebooks/barrier_option_pricing.ipynb"
+            >Full write-up (notebook)</a
+          >
+        </p>
+      </div>
+    </header>
+
+    <section class="contract" aria-label="Contract parameters">
+      <div class="wrap contract-grid">
+        <label class="slider">
+          <span class="slider-head"><span>Spot S<sub>0</sub></span><output id="S0-out"></output></span>
+          <input type="range" id="S0" min="50" max="150" step="1" value="100" />
+        </label>
+        <label class="slider">
+          <span class="slider-head"><span>Strike K</span><output id="K-out"></output></span>
+          <input type="range" id="K" min="50" max="150" step="1" value="100" />
+        </label>
+        <label class="slider">
+          <span class="slider-head"><span>Barrier H</span><output id="H-out"></output></span>
+          <input type="range" id="H" min="101" max="200" step="1" value="130" />
+        </label>
+        <label class="slider">
+          <span class="slider-head"><span>Volatility σ</span><output id="sigma-out"></output></span>
+          <input type="range" id="sigma" min="0.05" max="0.6" step="0.01" value="0.2" />
+        </label>
+        <label class="slider">
+          <span class="slider-head"><span>Rate r</span><output id="r-out"></output></span>
+          <input type="range" id="r" min="0" max="0.1" step="0.005" value="0.05" />
+        </label>
+        <label class="slider">
+          <span class="slider-head"><span>Maturity T</span><output id="T-out"></output></span>
+          <input type="range" id="T" min="0.1" max="3" step="0.1" value="1" />
+        </label>
+      </div>
+    </section>
+
+    <main class="wrap">
+      <section class="panel" id="pricer" aria-labelledby="pricer-title">
+        <div class="panel-head">
+          <h2 id="pricer-title"><span class="num">1</span> Pricer</h2>
+          <label class="inline-control">
+            Barrier checked
+            <select id="monitoring">
+              <option value="continuous">continuously</option>
+              <option value="daily" selected>daily (252 / year)</option>
+              <option value="weekly">weekly (52 / year)</option>
+              <option value="monthly">monthly (12 / year)</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">
+          <strong>What to look for:</strong> switch between continuous and daily checks. A path
+          can cross the barrier and come back between two checks, so the less often the barrier
+          is checked, the more the option is worth. The Broadie–Glasserman–Kou shift reproduces
+          the simulated price from the closed form.
+        </p>
+        <p class="status" id="pricer-status" hidden></p>
+        <div class="cards">
+          <div class="card">
+            <span class="card-label">Closed form, continuous barrier</span>
+            <span class="card-value" id="price-cont"></span>
+          </div>
+          <div class="card card-accent">
+            <span class="card-label">Closed form, <span id="monitoring-label">daily</span> checks</span>
+            <span class="card-value" id="price-monitored"></span>
+            <span class="card-note" id="monitoring-note"></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Vanilla call (Black–Scholes)</span>
+            <span class="card-value" id="price-vanilla"></span>
+          </div>
+          <div class="card">
+            <span class="card-label">Knockout discount</span>
+            <span class="card-value" id="discount"></span>
+            <span class="card-note">vs vanilla, at the selected monitoring</span>
+          </div>
+        </div>
+        <h3 class="sub">Monte Carlo · 20,000 antithetic paths · price ± 95% CI</h3>
+        <div class="cards cards-2" id="mc-cards">
+          <div class="card" id="mc-discrete-card">
+            <span class="card-label">Barrier checked at each monitoring date</span>
+            <span class="card-value" id="mc-discrete">computing…</span>
+          </div>
+          <div class="card">
+            <span class="card-label">Brownian bridge (continuous barrier)</span>
+            <span class="card-value" id="mc-bridge">computing…</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="greeks" aria-labelledby="greeks-title">
+        <div class="panel-head">
+          <h2 id="greeks-title"><span class="num">2</span> Greeks explorer</h2>
+          <fieldset class="segmented" id="expiry">
+            <legend>Time to expiry</legend>
+          </fieldset>
+        </div>
+        <p class="hint">
+          <strong>What to look for:</strong> with a year to go, delta turns negative well below
+          the barrier, because a rally adds more knockout risk than value. Now shorten the time
+          to expiry: just below the barrier the option is worth a lot, at the barrier it is worth
+          nothing, and delta and gamma explode. Continuous barrier shown.
+        </p>
+        <div class="charts">
+          <div class="chart-box"><canvas id="chart-delta" aria-label="Delta against spot"></canvas></div>
+          <div class="chart-box"><canvas id="chart-gamma" aria-label="Gamma against spot"></canvas></div>
+        </div>
+        <p class="readout" id="greeks-readout"></p>
+      </section>
+
+      <section class="panel" id="hedging" aria-labelledby="hedging-title">
+        <div class="panel-head">
+          <h2 id="hedging-title"><span class="num">3</span> Hedging simulator</h2>
+          <div class="inline-control">
+            <label for="rebalance">Rebalance every <output id="rebalance-out"></output></label>
+            <input type="range" id="rebalance" min="0" max="4" step="1" value="4" />
+            <button type="button" id="new-paths">New paths</button>
+          </div>
+        </div>
+        <p class="hint">
+          <strong>What to look for:</strong> sell each option at its model price and delta-hedge it
+          with the stock. Rebalancing more often shrinks the vanilla call's hedging error like
+          1/√n, but helps the barrier option much less. Its P&amp;L has fat tails on both sides,
+          driven by paths that come close to the barrier. The barrier contract here is checked
+          at each daily close. 2,000 simulated paths.
+        </p>
+        <p class="status" id="hedge-status" hidden></p>
+        <div id="hedge-body">
+          <div class="charts">
+            <div class="chart-box"><canvas id="chart-hist" aria-label="Histogram of hedging P&amp;L"></canvas></div>
+            <div class="chart-box"><canvas id="chart-std" aria-label="Hedging error against rebalancing frequency"></canvas></div>
+          </div>
+          <table class="stats" id="hedge-table">
+            <thead>
+              <tr>
+                <th scope="col">P&amp;L / premium</th>
+                <th scope="col">Std</th>
+                <th scope="col">1% quantile</th>
+                <th scope="col">99% quantile</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          <strong>Method.</strong> Closed form for the continuously monitored up-and-out call:
+          Haug (2007). Discrete monitoring via the Broadie–Glasserman–Kou (1997) barrier shift
+          H·e<sup>±0.5826σ√Δt</sup>. Monte Carlo uses exact GBM steps, antithetic pairs (standard
+          errors on pair averages) and, for the continuous barrier, the Brownian-bridge crossing
+          probability. Greeks are central finite differences of the closed form. All random
+          numbers are seeded, so results are reproducible.
+        </p>
+        <p>
+          The JavaScript here is a port of the project's Python package. Its tests check it
+          against 1,098 values computed by that package. More detail in the
+          <a
+            href="https://github.com/MilanKalajdzic/barrier-option-pricing/blob/main/notebooks/barrier_option_pricing.ipynb"
+            >notebook</a
+          >.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
